@@ -22,8 +22,8 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 gcs_sign-*.tar
 
-# Temporary files, for example, from tests.
-/tmp/
+# Temporary files for e.g. tests
+/tmp
 
 # Dialyzer
 /.dialyzer
