@@ -1,7 +1,7 @@
 defmodule GCSSign.MixProject do
   use Mix.Project
 
-  @version "1.0.0"
+  @version "1.0.1"
   @repo_url "https://github.com/jeroenvisser101/gcs_sign"
 
   def project do
