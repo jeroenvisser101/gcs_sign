@@ -6,9 +6,19 @@
 
 `GCSSign` helps signing URLs and HTTP form requests for Google Cloud Storage.
 
+This library provides logic for signing URLs and POST policies *locally* with JSON service account
+key credentials.
+
 ## Examples
 
 ### Signing URLs
+
+`GCSSign.sign_url_v4/2` can be used to sign URLs. Signed URLs give limited, temporary access to a
+resource in a Google Cloud Storage bucket.
+
+[Google's documentation](https://cloud.google.com/storage/docs/access-control/signed-urls) goes
+into further detail on the usage and best practices of signed URLs.
+
 ```elixir
 # Use a service account key
 credentials = "GCP_CREDENTIALS" |> System.fetch_env!() |> Jason.decode!()

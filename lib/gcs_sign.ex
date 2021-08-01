@@ -9,31 +9,100 @@ defmodule GCSSign do
   @default_expiration 60 * 60
   @google_cloud_storage_host "storage.googleapis.com"
 
+  @typedoc """
+  A HTTP method.
+
+  Accepts atoms and case-insensitive strings. Every method will be uppercased and converted to a
+  string before being encoded.
+  """
   @type http_verb() :: atom() | String.t()
+
+  @typedoc """
+  A list of headers.
+
+  Headers are case-insensitive. The same header key can appear multiple times and will be handled
+  accordingly according to the
+  [documenation](https://cloud.google.com/storage/docs/authentication/canonical-requests#about-headers).
+  """
   @type headers() :: [{String.t(), String.t()}]
+
+  @typedoc """
+  A query string in the form of a list of tuples.
+
+  Optionally accepts atoms as keys that will be transformed to strings. Only strings are allowed
+  as values.
+  """
   @type query() :: [{String.t() | atom(), String.t()}]
-  @type condition() :: term()
+
+  @typedoc """
+  A condition for a POST policy.
+
+  See [Google's documentation](https://cloud.google.com/storage/docs/authentication/signatures#policy-document)
+  for more.
+
+  ## Examples
+
+  ```elixir
+  # Exact matching
+  ["eq", "$x-custom-header", "value"]
+  %{"x-goog-meta-tenant" => "tenant-1"}
+
+  # Starts with
+  ["starts-with", "$key", "some/prefix/key"]
+  ["starts-with", "$key", ""] # no restrictions on value
+
+  # Content-Length range
+  ["content-length-range", 0, 20_000_000]
+  """
+  @type condition() :: %{required(String.t()) => String.t()} | [String.t() | integer()]
+
+  @typedoc "A list of conditions."
+  @type conditions() :: [condition()]
+
+  @typedoc """
+  The parsed JSON service account key.
+
+  Contains the `private_key` and `client_id`/`client_email`.
+  """
   @type credentials() :: %{required(String.t()) => term()}
+
+  @typedoc """
+  Additional fields for a signed POST policy.
+
+  [Supported fields](https://cloud.google.com/storage/docs/xml-api/post-object-forms#form_fields)
+  """
+  @type fields() :: %{required(String.t()) => term()}
+
+  @typedoc """
+  An authorizer key type.
+
+  Defaults to `:client_id`, but can optionally be set to `:client_email` to use the
+  service account's email as authorizer. See "Authorizer" in the module documentation for more.
+  """
   @type authorizer() :: :client_id | :client_email
 
-  @type signed_policy() :: %{url: String.t(), fields: map()}
+  @typedoc "A signed POST policy"
+  @type signed_policy() :: %{url: String.t(), fields: fields()}
 
+  @typedoc "Shared options for both URL and POST policy signing"
   @type common_option() ::
-          {:method, http_verb()}
-          | {:authorizer, authorizer()}
+          {:authorizer, authorizer()}
           | {:expires_in, non_neg_integer()}
           | {:bucket, String.t()}
           | {:path, String.t()}
           | {:key, String.t()}
           | {:utc_now, Calendar.datetime()}
 
+  @typedoc "Options specific for URL signing"
   @type url_option() ::
           {:payload, String.t() | nil}
+          | {:method, http_verb()}
           | {:host, String.t()}
           | {:query, query()}
           | {:headers, headers()}
 
-  @type post_policy_option() :: {:conditions, [condition()]} | {:fields, map()}
+  @typedoc "Options specific for POST policy signing"
+  @type post_policy_option() :: {:conditions, [condition()]} | {:fields, fields()}
 
   @doc """
   Signs a POST policy
@@ -47,9 +116,46 @@ defmodule GCSSign do
   describes how this can be used to perform a multipart upload.
 
   ## Options
-    * `:bucket` - `String.t()` - The name of the GCS bucket.
-    * `:key` - The key to the file in the bucket, without leading slash.
-    * `:method` - The key to the file in the bucket, without leading slash. Default: `"GET"`
+
+    * `:bucket` (`t:String.t/0`) - The name of the GCS bucket.
+    * `:key` (`t:String.t/0`) - The key to the file in the bucket, without leading slash.
+    * `:authorizer`  (`t:authorizer/0`) - The type of authorizer to use, see
+       "[Authorizer](#authorizer-options)" in the module documentation. Defaults to `:client_id`
+    * `:expires_in` (`t:integer/0`) - Time in seconds that the POST policy should stay valid for.
+       Defaults to `3600` (1 hour). Cannot exceed 7 days or 604800 seconds.
+    * `:conditions` (`t:conditions/0`) - Additional conditions to impose on the policy, see
+       "Conditions" below.
+    * `:fields` (`t:fields/0`) - Additional fields to include in the signed policy, see "Fields"
+       below.
+    * `:utc_now` (`t:Calendar.datetime/0`) - Optionally uses a different time instead of
+      `DateTime.utc_now/0`.
+
+  ## Conditions
+
+  Conditions can be in either 3-element list format, or as a map:
+
+  ```elixir
+  conditions = [
+    ["eq", "$x-custom-header", "value"],
+    ["content-length-range", 0, 20_000_000],
+    %{"x-goog-meta-tenant" => "tenant-1"}
+  ]
+  ```
+
+  To learn more about the supported conditions, see
+  [Google's documentation](https://cloud.google.com/storage/docs/authentication/signatures#policy-document).
+
+  ## Fields
+
+  Additional fields [supported by GCS](https://cloud.google.com/storage/docs/xml-api/post-object-forms#form_fields)
+  can be passed as `:fields` and will be signed accordingly.
+
+  ```elixir
+  fields = %{
+    "cache-control" => "public, max-age=31536000"
+    "content-type" => "text/plain",
+  }
+  ```
   """
   @spec sign_post_policy_v4(credentials(), [common_option() | post_policy_option()]) ::
           {:ok, signed_policy()}
@@ -63,6 +169,10 @@ defmodule GCSSign do
     expires_in = Keyword.get(sign_opts, :expires_in, @default_expiration)
     conditions = Keyword.get(sign_opts, :conditions, [])
     fields = Keyword.get(sign_opts, :fields, %{})
+
+    if expires_in > 604_800 do
+      raise ArgumentError, "expires_in cannot exceed 7 days (604800 seconds)"
+    end
 
     utc_now = Keyword.get_lazy(sign_opts, :utc_now, &DateTime.utc_now/0)
     iso_date = DateTime.to_date(utc_now) |> Date.to_iso8601(:basic)
@@ -96,6 +206,43 @@ defmodule GCSSign do
     {:ok, signed_policy}
   end
 
+  @doc """
+  Signs a URL with V4 signing process
+
+  Signed URLs give limited permission and time to make an authorized request for anyone in
+  possession of the URL without requiring the requester to have a Google account with access to
+  the resource. Signed URLs contain authentication information in the query string to authenticate
+  a request on behalf of the service account used to sign the URL.
+
+  To learn more about signed URLs, see
+  [Google's documentation](https://cloud.google.com/storage/docs/access-control/signed-urls).
+
+  ## Options
+
+    * `:bucket` (`t:String.t/0`) - The name of the GCS bucket.
+    * `:key` (`t:String.t/0`) - The key to the file in the bucket, without leading slash.
+    * `:authorizer`  (`t:authorizer/0`) - The type of authorizer to use, see
+       "[Authorizer](#authorizer-options)" in the module documentation. Defaults to `:client_id`
+    * `:expires_in` (`t:integer/0`) - Time in seconds that the POST policy should stay valid for.
+       Defaults to `3600` (1 hour). Cannot exceed 7 days or 604800 seconds.
+    * `:method` (`t:http_verb/0`) - The key to the file in the bucket, without leading slash.
+       Default: `"GET"`
+    * `:headers` (`t:headers/0`) - Headers that should be included in the request. Defaults to the
+       host header.
+    * `:payload` (`t:String.t/0` or `nil`) - The request body required when making the request.
+       Defaults to `nil`. `nil` is converted to `UNSIGNED-PAYLOAD`, meaning the payload isn't
+       signed.
+    * `:query` (`t:query/0`) - The query parameters required in the request.
+    * `:host` (`t:String.t/0`) - The cloud storage hostname to use. Defaults to
+      `#{inspect(@google_cloud_storage_host)}`. When set to a custom hostname, the path will not
+      contain the bucket name to allow for
+      [Custom CNAME](https://cloud.google.com/storage/docs/domain-name-verification)
+      or
+      [Backend buckets](https://cloud.google.com/load-balancing/docs/https/ext-load-balancer-backend-buckets)
+      in a loadbalancer setup.
+    * `:utc_now` (`t:Calendar.datetime/0`) - Optionally uses a different time instead of
+      `DateTime.utc_now/0`.
+  """
   @spec sign_url_v4(credentials(), [common_option() | url_option()]) :: String.t()
   def sign_url_v4(credentials, sign_opts) do
     bucket = Keyword.fetch!(sign_opts, :bucket)
