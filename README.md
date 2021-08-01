@@ -55,7 +55,7 @@ sign_opts = [
   expires_in: 600,
   bucket: "demo-bucket",
   key: "test.txt",
-  params: %{
+  fields: %{
     "content-type" => "text/plain",
     "cache-control" => "public, max-age=31536000"
   },
