@@ -75,6 +75,7 @@ sign_opts = [
 {:ok, policy} = GCSSign.sign_post_policy_v4(credentials, sign_opts)
 ```
 
+<a id="authorizer-options" />
 ## Authorizer options
 Google Cloud Storage accepts two different options for passing the credential scope's authorizer:
 
