@@ -55,7 +55,6 @@ defmodule GCSSign.MixProject do
 
   defp dialyzer do
     [
-      plt_extra_applications: [:public_key],
       plt_file:
         {:no_warn, ".dialyzer/elixir-#{System.version()}-erlang-otp-#{System.otp_release()}.plt"}
     ]
