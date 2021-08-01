@@ -75,6 +75,8 @@ GCSSign will use the `client_id` by default because it exposes the least informa
 XML POST with HTML forms. You can optionally set `authorizer: :client_email` in `sign_opts` to
 make the credential scope use `client_email`.
 
+[Read more about authorizer in Google's documentation](https://cloud.google.com/storage/docs/authentication/canonical-requests#required-query-parameters)
+
 <!-- MDOC !-->
 
 ## Installation
